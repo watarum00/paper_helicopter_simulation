@@ -6,12 +6,28 @@ class PaperSimulation {
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private paper: THREE.Mesh | null = null;
-  private velocity = 0;
   private gravity  = -9.8;
-  private dragCoefficient = 0.47;//紙の抗力係数（実際の値に応じて調整）
-  private airDensity = 1.225;//空気密度（kg/m³）
+  private physicsWorld: any;
+  private tmpTransfrom: any;
+  private paperPhysicsObject: any;
+
 
   constructor(private width: number, private height: number) {
+    this.initPhysics();
+    this.init();
+  }
+
+  private async initPhysics(){
+    //Ammo.jsの初期化が完了したら呼び出される
+    const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+    const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+    const overlappingPairCache = new Ammo.btDbvtBroadphase();
+    const solver = new Ammo.btSequentialImpulseConstraintSolver();
+    this.physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
+    this.physicsWorld.setGravity(new Ammo.btVector3(0, this.gravity, 0));
+  }
+
+  private init(){
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.renderer = new THREE.WebGLRenderer();
@@ -23,6 +39,7 @@ class PaperSimulation {
     this.camera.lookAt(this.scene.position);//カメラがシーンの中心を見るように
 
     this.createPaper();
+    this.createPaperPhysicsObject();
   }
 
   private createPaper() {
@@ -33,6 +50,23 @@ class PaperSimulation {
     this.paper.rotation.x = Math.PI / 2;
     this.paper.position.set(0, 10, 0);
     this.scene.add(this.paper);
+  }
+
+  private createPaperPhysicsObject() {
+    const paperShape = new Ammo.btBoxShape(new Ammo.btVector3(this.width / 2, 0.1, this.height / 2));
+    const paperMass = 1; // 紙の質量
+    const paperInertia = new Ammo.btVector3(0, 0, 0); // 慣性モーメント
+    paperShape.calculateLocalInertia(paperMass, paperInertia);
+  
+    const paperTransform = new Ammo.btTransform();
+    paperTransform.setIdentity();
+    paperTransform.setOrigin(new Ammo.btVector3(0, 10, 0)); // 初期位置
+    const paperMotionState = new Ammo.btDefaultMotionState(paperTransform);
+  
+    const paperRigidBodyInfo = new Ammo.btRigidBodyConstructionInfo(paperMass, paperMotionState, paperShape, paperInertia);
+    this.paperPhysicsObject = new Ammo.btRigidBody(paperRigidBodyInfo);
+  
+    this.physicsWorld.addRigidBody(this.paperPhysicsObject);
   }
 
   public startAnimation() {
@@ -47,30 +81,33 @@ class PaperSimulation {
 
   private animate() {
     requestAnimationFrame(() => this.animate());
-
-    //空気抵抗を計算
-    const dragForce = -this.dragCoefficient * this.airDensity * this.velocity * this.velocity / 2;
-
-    //重力と空気抵抗による速度の更新
-    this.velocity += (this.gravity + dragForce) * 0.02;//0.02は1フレームごとの秒数の定義
-
-    //紙の位置を更新
-    if(this.paper){
-      this.paper.position.y += this.velocity * 0.02;//位置=速度 * 時間
-
-      //地面に達したら停止（仮にy座標が-5未満の場合）
-      if (this.paper.position.y < -5) {
-        this.velocity = 0;
-        this.paper.position.y = -5;
-      }
-      this.renderer.render(this.scene, this.camera);
-    }
+  
+    // 物理世界のステップを進める
+    this.physicsWorld.stepSimulation(1 / 60, 10);
+  
+    // 紙の物理オブジェクトの位置と向きを取得
+    const transform = new Ammo.btTransform();
+    this.paperPhysicsObject.getMotionState().getWorldTransform(transform);
+  
+    // Three.jsのオブジェクトを更新
+    const pos = transform.getOrigin();
+    const quat = transform.getRotation();
+    this.paper.position.set(pos.x(), pos.y(), pos.z());
+    this.paper.quaternion.set(quat.x(), quat.y(), quat.z(), quat.w());
+  
+    this.renderer.render(this.scene, this.camera);
   }
+  
+}
+
+async function setupAmmo(){
+  await Ammo();
 }
 
 const runButton = document.getElementById('runButton');
 if(runButton){
   runButton.addEventListener('click', () => {
+    setupAmmo();
     const simulation = new PaperSimulation(1, 1);
     simulation.startAnimation();
     simulation.render();
