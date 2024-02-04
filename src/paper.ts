@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import Ammo from 'ammo.js';
 
 class PaperSimulation {
   private scene: THREE.Scene;
