@@ -35,32 +35,39 @@ class PaperSimulation {
     document.body.appendChild(this.renderer.domElement);
     const light = new THREE.AmbientLight(0xffffff);
     this.scene.add(light);
-    this.camera.position.set(0,10,5);
+    this.camera.position.set(10,10,10);
     this.camera.lookAt(this.scene.position);//カメラがシーンの中心を見るように
 
     this.createPaper();
     this.createPaperPhysicsObject();
+    this.createGround();
+    this.createGroundPhysicsObject();
   }
 
   private createPaper() {
     const geometry = new THREE.PlaneGeometry(this.width, this.height);
     const material = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide });
     this.paper = new THREE.Mesh(geometry, material);
-    //地面に並行にするために回転
-    this.paper.rotation.x = Math.PI / 2;
-    this.paper.position.set(0, 10, 0);
+    
     this.scene.add(this.paper);
   }
 
   private createPaperPhysicsObject() {
     const paperShape = new Ammo.btBoxShape(new Ammo.btVector3(this.width / 2, 0.1, this.height / 2));
-    const paperMass = 1; // 紙の質量
+    const paperMass = 5; // 紙の質量
     const paperInertia = new Ammo.btVector3(0, 0, 0); // 慣性モーメント
     paperShape.calculateLocalInertia(paperMass, paperInertia);
   
     const paperTransform = new Ammo.btTransform();
     paperTransform.setIdentity();
-    paperTransform.setOrigin(new Ammo.btVector3(0, 10, 0)); // 初期位置
+
+    // 紙の回転を設定
+    const quat = new Ammo.btQuaternion();
+    // X軸周りに90度回転させる（地面に平行にするため）
+    quat.setValue(0, -Math.PI / 2, -Math.PI / 2, 0);
+    paperTransform.setRotation(quat);
+
+    paperTransform.setOrigin(new Ammo.btVector3(0, 8, 0)); // 初期位置
     const paperMotionState = new Ammo.btDefaultMotionState(paperTransform);
   
     const paperRigidBodyInfo = new Ammo.btRigidBodyConstructionInfo(paperMass, paperMotionState, paperShape, paperInertia);
@@ -68,6 +75,51 @@ class PaperSimulation {
   
     this.physicsWorld.addRigidBody(this.paperPhysicsObject);
   }
+
+  private createGround() {
+    //地面のジオメトリを作成
+    const groundGeometry = new THREE.PlaneGeometry(50, 50);
+    //地面のマテリアルを作成
+    const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x777777, side: THREE.DoubleSide });
+    //地面のメッシュを作成
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    //地面を回転させて水平にする
+    ground.rotation.x = -Math.PI / 2;
+    //地面の位置を設定（Y軸で少し下げるなど）
+    ground.position.y = 0;
+    //シーンに地面を追加
+    this.scene.add(ground);
+
+    //GridHelperを作成
+    const size = 50; //格子のサイズ
+    const divisions = 10; //格子の分割数
+    const gridHelper = new THREE.GridHelper(size, divisions, 0x0000ff, 0x808080);
+    gridHelper.position.y = 0.01; //地面のちょうど上に位置するように微調整
+    this.scene.add(gridHelper);
+    const axesHelper = new THREE.AxesHelper(5);
+    this.scene.add(axesHelper);
+  }
+
+  private createGroundPhysicsObject() {
+    //地面の物理シェイプを作成。ここでは無限平面を使用。
+    const groundShape = new Ammo.btStaticPlaneShape(new Ammo.btVector3(0, 1, 0), 0);
+    //地面の慣性モーメントは必要ない（静的オブジェクトのため）
+    const groundMass = 0; // 静的オブジェクトなので質量は0
+    const groundInertia = new Ammo.btVector3(0, 0, 0);
+    //地面のトランスフォームを作成
+    const groundTransform = new Ammo.btTransform();
+    groundTransform.setIdentity();
+    //地面の位置を設定
+    groundTransform.setOrigin(new Ammo.btVector3(0, 0, 0));
+    const groundMotionState = new Ammo.btDefaultMotionState(groundTransform);
+    //地面の剛体情報を作成
+    const groundRigidBodyInfo = new Ammo.btRigidBodyConstructionInfo(groundMass, groundMotionState, groundShape, groundInertia);
+    const groundRigidBody = new Ammo.btRigidBody(groundRigidBodyInfo);
+    //物理世界に地面を追加
+    this.physicsWorld.addRigidBody(groundRigidBody);
+  }
+  
+  
 
   public startAnimation() {
     this.animate();
